@@ -1,0 +1,36 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        
+        {
+            "name": "MASE API Debug",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "uvicorn",
+            "args": [
+                "app.main:app",
+                "--reload",
+                "--host",
+                "0.0.0.0",
+                "--port",
+                "8000"
+            ],
+            "jinja": true,
+            "justMyCode": false,
+            "env": {
+                "MASE_ENVIRONMENT": "development",
+                "MASE_DEBUG": "true",
+                "MASE_PORT": "8000",
+                "MASE_HOST": "0.0.0.0",
+                "MASE_DATA_DIR": "${workspaceFolder}/data",
+                "MASE_LOG_LEVEL": "DEBUG",
+                "MASE_POSTGRES_SERVER": "localhost",
+                "MASE_POSTGRES_PORT": "5432",
+                "MASE_POSTGRES_USER": "postgres",
+                "MASE_POSTGRES_PASSWORD": "postgres_password",
+                "MASE_POSTGRES_DB": "mase",
+                "MASE_DEFAULT_LIMIT": "100"
+            }
+        }
+    ]
+}

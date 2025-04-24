@@ -1,0 +1,67 @@
+FROM python:3.9-slim as builder
+
+WORKDIR /app
+
+# Configurar variables de entorno para la etapa de construcción
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1
+
+# Instalar dependencias de sistema
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    postgresql-client \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copiar archivos de requisitos
+COPY requirements.txt .
+
+# Instalar dependencias en un entorno virtual
+RUN python -m venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
+RUN pip install --no-cache-dir -r requirements.txt && \
+    # Asegurarse de que pydantic-settings esté instalado
+    pip install --no-cache-dir pydantic-settings
+
+# Segunda etapa para una imagen más ligera
+FROM python:3.9-slim
+
+WORKDIR /app
+
+# Copiar el entorno virtual desde la etapa anterior
+COPY --from=builder /opt/venv /opt/venv
+
+# Configurar variables de entorno por defecto
+ENV PATH="/opt/venv/bin:$PATH" \
+    PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    MASE_ENVIRONMENT=production \
+    MASE_DEBUG=false \
+    MASE_PORT=8000 \
+    MASE_HOST=0.0.0.0 \
+    MASE_DB_PATH=/app/data/sector_matrix.db \
+    MASE_DATA_DIR=/app/data \
+    MASE_LOG_LEVEL=INFO \
+    MASE_WORKERS=4 \
+    MASE_CORS_ORIGINS="*"
+
+# Copiar el código fuente
+COPY . .
+
+# Crear directorio para datos
+RUN mkdir -p /app/data
+
+# Exponer el puerto
+EXPOSE 8000
+
+# Ejecutar como usuario no root
+RUN useradd -m appuser
+USER appuser
+
+# Copiar y hacer ejecutable el script de inicio
+COPY start.sh /app/start.sh
+RUN chmod +x /app/start.sh && \
+    # Asegurarse de que el script tenga formato UNIX (LF en lugar de CRLF)
+    sed -i 's/\r$//' /app/start.sh
+
+# Comando para ejecutar la aplicación
+CMD ["bash", "/app/start.sh"]
