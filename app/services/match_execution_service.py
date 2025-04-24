@@ -159,6 +159,94 @@ class MatchExecutionService:
                 db.close()
     
     @staticmethod
+    def store_matches_bulk(match_results: List[MatchResult], execution_id: str, ecosystem_id: str, db: Session = None, batch_size: int = 1000) -> int:
+        """
+        Almacena múltiples matches en la base de datos usando inserción masiva.
+        
+        Args:
+            match_results: Lista de resultados de match a almacenar
+            execution_id: ID de la ejecución
+            ecosystem_id: ID del ecosistema
+            db: Sesión de base de datos (opcional)
+            batch_size: Tamaño del lote para inserción masiva
+            
+        Returns:
+            Número total de matches almacenados
+        """
+        close_db = False
+        if db is None:
+            db = next(get_db())
+            close_db = True
+            
+        try:
+            # Obtener todos los NITs únicos
+            all_nits = set()
+            for match in match_results:
+                all_nits.add(match.nit_1)
+                all_nits.add(match.nit_2)
+            
+            # Obtener todas las empresas de una vez
+            companies = db.query(Company).filter(Company.nit.in_(all_nits)).all()
+            company_map = {company.nit: company for company in companies}
+            
+            # Preparar lotes de matches
+            matches = []
+            total_stored = 0
+            
+            for match_result in match_results:
+                company_a = company_map.get(match_result.nit_1)
+                company_b = company_map.get(match_result.nit_2)
+                
+                if not company_a or not company_b:
+                    logger.warning(f"No se encontraron las empresas con NITs {match_result.nit_1} y/o {match_result.nit_2}")
+                    continue
+                
+                new_match = Match(
+                    match_execution_id=execution_id,
+                    empresa_a_id=company_a.id,
+                    empresa_b_id=company_b.id,
+                    ecosistema_id=ecosystem_id,
+                    affinity=match_result.match_afinidad,
+                    synergy=match_result.match_sinergia,
+                    employees_match=match_result.diferencia_empleados,
+                    city_match=match_result.match_ciudad,
+                    size_match=match_result.match_tamaño,
+                    sector_match=match_result.match_sector,
+                    total_score=match_result.puntaje_total,
+                    explanation={
+                        "affinity": match_result.exp_afinidad,
+                        "synergy": match_result.exp_sinergia,
+                        "employees": match_result.exp_empleados,
+                        "city": match_result.exp_ciudad,
+                        "size": match_result.exp_tamaño,
+                        "sector": match_result.exp_sector
+                    }
+                )
+                matches.append(new_match)
+                
+                # Insertar en lotes para optimizar rendimiento
+                if len(matches) >= batch_size:
+                    db.bulk_save_objects(matches)
+                    total_stored += len(matches)
+                    matches = []
+            
+            # Insertar el último lote si queda alguno
+            if matches:
+                db.bulk_save_objects(matches)
+                total_stored += len(matches)
+            
+            db.commit()
+            return total_stored
+            
+        except Exception as e:
+            db.rollback()
+            logger.error(f"Error en inserción masiva: {str(e)}")
+            raise
+        finally:
+            if close_db:
+                db.close()
+    
+    @staticmethod
     def get_ecosystem_executions(ecosystem_id: str, limit: int = 10, db: Session = None) -> List[MatchExecution]:
         """
         Obtiene las ejecuciones de matching para un ecosistema.

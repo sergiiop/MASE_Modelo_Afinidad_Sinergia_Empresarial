@@ -106,14 +106,16 @@ async def generate_ecosystem_matches(
             batch_size=200  # Tamaño de lote optimizado para procesamiento paralelo
         )
         
-        # Almacenar los matches asociados a esta ejecución
-        logger.info(f"Iniciando almacenamiento de {len(match_results)} matches generados")
-        stored_matches = 0
-        for match_result in match_results:
-            MatchExecutionService.store_match(match_result, match_execution.id, ecosystem_id, db)
-            stored_matches += 1
-            if stored_matches % 10 == 0:  # Log cada 10 matches
-                logger.info(f"Almacenados {stored_matches} de {len(match_results)} matches")
+        # Almacenar los matches usando inserción masiva
+        logger.info(f"Iniciando almacenamiento masivo de {len(match_results)} matches")
+        stored_matches = MatchExecutionService.store_matches_bulk(
+            match_results=match_results,
+            execution_id=match_execution.id,
+            ecosystem_id=ecosystem_id,
+            db=db,
+            batch_size=1000  # Insertar en lotes de 1000
+        )
+        logger.info(f"Almacenamiento masivo completado. Total de matches: {stored_matches}")
         
         logger.info(f"Proceso completado. Total de matches almacenados: {stored_matches}")
         return {
