@@ -34,11 +34,11 @@ app.add_middleware(
 app.include_router(api_router)
 
 # Evento de inicio para crear las tablas de la base de datos
-@app.on_event("startup")
-async def startup_db_client():
-    logger.info("Creando tablas en la base de datos si no existen...")
-    Base.metadata.create_all(bind=engine)
-    logger.info("Tablas creadas correctamente.")
+# @app.on_event("startup")
+# async def startup_db_client():
+#     logger.info("Creando tablas en la base de datos si no existen...")
+#     Base.metadata.create_all(bind=engine)
+#     logger.info("Tablas creadas correctamente.")
 
 # Ruta de inicio
 @app.get("/")

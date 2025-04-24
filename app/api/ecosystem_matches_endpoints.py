@@ -1,17 +1,26 @@
 from fastapi import APIRouter, Depends, Query, HTTPException, Path
-from typing import List, Dict, Any, Optional
+from sqlalchemy.orm import Session, joinedload
 import logging
-from sqlalchemy.orm import Session
+from typing import List, Dict, Any, Optional
 
 from app.db.database import get_db
 from app.models.schemas import MatchResponse, MatchResult, Empresa
 from app.services.matching_service import MatchingService
 from app.services.match_storage_service import MatchStorageService
 from app.services.match_execution_service import MatchExecutionService
-from app.db.models import Company, Match
+from app.db.models import Company, Match, EcosystemCompany
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
+
+def clean_ciiu_code(code: str) -> str:
+    """Limpia el código CIIU removiendo la letra inicial si existe."""
+    if not code:
+        return None
+    # Si el código comienza con una letra, la removemos
+    if code and code[0].isalpha():
+        return code[1:]
+    return code
 
 @router.post("/ecosystems/{ecosystem_id}/generate-matches", response_model=Dict[str, Any])
 async def generate_ecosystem_matches(
@@ -31,21 +40,36 @@ async def generate_ecosystem_matches(
     """
     try:
         # Obtener todas las empresas del ecosistema desde la base de datos principal
-        companies = MatchStorageService.get_ecosystem_companies(ecosystem_id, db)
+        # Incluir las relaciones necesarias (ciudad y ciiu)
+        companies = db.query(Company).options(
+            joinedload(Company.ciudad),
+            joinedload(Company.ciiu)
+        ).join(
+            EcosystemCompany, 
+            EcosystemCompany.empresa_id == Company.id
+        ).filter(
+            EcosystemCompany.ecosistema_id == ecosystem_id
+        ).all()
+
         if not companies:
             raise HTTPException(status_code=404, detail=f"No hay empresas en el ecosistema {ecosystem_id}")
         
         # Convertir las empresas al formato esperado por el servicio de matching
         empresas = []
         for company in companies:
+            # Obtener valores de las relaciones
+            ciudad_nombre = company.ciudad.nombre if company.ciudad else None
+            codigo_ciiu = clean_ciiu_code(company.ciiu.codigo) if company.ciiu else None
+            descripcion_ciiu = company.ciiu.descripcion if company.ciiu else None
+            
             empresa = Empresa(
                 nit=company.nit,
                 razonsocial=company.razonsocial,
                 nombrecomercial=company.nombrecomercial,
-                codigo_ciiu=company.codigo_ciiu,
-                descripcion_ciiu=company.descripcion_ciiu,
-                ciudad=company.ciudad,
-                tamaño=company.tamaño,
+                codigo_ciiu=codigo_ciiu,
+                descripcion_ciiu=descripcion_ciiu,
+                ciudad=ciudad_nombre,
+                tamaño=company.size_company,
                 num_empleados_directos=company.num_empleados_directos,
                 num_empleados_indirectos=company.num_empleados_indirectos,
                 crear_nuevos_modelos_negocio=company.crear_nuevos_modelos_negocio,
@@ -72,8 +96,7 @@ async def generate_ecosystem_matches(
         match_results = matching_service.generar_matching_mase(
             empresas=empresas,
             ecosystem_id=ecosystem_id,
-            limit=10,  # Valor predeterminado
-            min_score=0.0  # Valor predeterminado
+            db=db,
         )
         
         # Almacenar los matches asociados a esta ejecución

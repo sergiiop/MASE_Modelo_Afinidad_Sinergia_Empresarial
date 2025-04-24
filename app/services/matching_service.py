@@ -1,6 +1,7 @@
 from itertools import combinations
 from typing import List, Dict, Any, Optional
 
+from sqlalchemy.orm import Session
 from app.models.schemas import Empresa, MatchResult, MatchConfig
 from app.models.sector_matrix import SectorMatrixService
 
@@ -11,6 +12,7 @@ class MatchingService:
         emp1: Empresa, 
         emp2: Empresa, 
         ecosystem_id: str,
+        db: Session,
         config: Optional[MatchConfig] = None
     ) -> MatchResult:
         """
@@ -62,7 +64,7 @@ class MatchingService:
         codigo2 = str(emp2_dict["codigo_ciiu"])
         
         # Usar el servicio de matriz sectorial para obtener la compatibilidad
-        match_sector = SectorMatrixService.get_compatibility(codigo1, codigo2)
+        match_sector = SectorMatrixService.get_compatibility(codigo1, codigo2, db)
             
         # Aplicar pesos a cada factor
         match_total = (
@@ -156,9 +158,8 @@ class MatchingService:
     def generar_matching_mase(
         empresas: List[Empresa], 
         ecosystem_id: str,
+        db: Session,
         config: Optional[MatchConfig] = None,
-        limit: Optional[int] = None,
-        min_score: Optional[float] = None
     ) -> List[MatchResult]:
         """
         Genera todos los posibles emparejamientos entre las empresas proporcionadas.
@@ -167,8 +168,6 @@ class MatchingService:
             empresas: Lista de empresas a emparejar
             ecosystem_id: ID del ecosistema
             config: Configuración de pesos para cada factor
-            limit: Número máximo de matches a retornar (ordenados por puntaje)
-            min_score: Puntaje mínimo para incluir un match en los resultados
             
         Returns:
             Lista de resultados de match ordenados por puntaje total
@@ -179,20 +178,12 @@ class MatchingService:
         matches = []
         for emp1, emp2 in combinations(empresas, 2):
             match_info = MatchingService.calcular_match_mase(
-                emp1, emp2, ecosystem_id, config
+                emp1, emp2, ecosystem_id, db, config
             )
             
-            # Filtrar por puntaje mínimo si se especifica
-            if min_score is not None and match_info.puntaje_total < min_score:
-                continue
-                
             matches.append(match_info)
             
         # Ordenar por puntaje total
         matches.sort(key=lambda x: x.puntaje_total, reverse=True)
         
-        # Limitar resultados si se especifica
-        if limit and isinstance(limit, int) and limit > 0:
-            matches = matches[:limit]
-            
         return matches

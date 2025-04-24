@@ -32,7 +32,7 @@ class MatchExecutionService:
             
         try:
             match_execution = MatchExecution(
-                ecosistema_id=ecosystem_id,
+                ecosystem_id=ecosystem_id,
                 description=description
             )
             db.add(match_execution)
@@ -81,7 +81,7 @@ class MatchExecutionService:
             
             if existing_match:
                 # Actualizar match existente
-                existing_match.execution_id = execution_id
+                existing_match.match_execution_id = execution_id
                 existing_match.affinity = match_result.match_afinidad
                 existing_match.synergy = match_result.match_sinergia
                 existing_match.employees_match = match_result.diferencia_empleados
@@ -103,7 +103,7 @@ class MatchExecutionService:
             else:
                 # Crear nuevo match
                 new_match = Match(
-                    execution_id=execution_id,
+                    match_execution_id=execution_id,
                     empresa_a_id=company_a.id,
                     empresa_b_id=company_b.id,
                     ecosistema_id=ecosystem_id,
@@ -121,8 +121,7 @@ class MatchExecutionService:
                         "city": match_result.exp_ciudad,
                         "size": match_result.exp_tamaño,
                         "sector": match_result.exp_sector
-                    },
-                    is_active=True
+                    }
                 )
                 db.add(new_match)
                 db.commit()
@@ -154,7 +153,7 @@ class MatchExecutionService:
             close_db = True
             
         try:
-            return db.query(Match).filter(Match.execution_id == execution_id).all()
+            return db.query(Match).filter(Match.match_execution_id == execution_id).all()
         finally:
             if close_db:
                 db.close()
