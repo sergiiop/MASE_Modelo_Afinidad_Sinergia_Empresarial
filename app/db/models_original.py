@@ -70,12 +70,12 @@ class Match(Base):
 
 
 # Modelo mínimo para empresas (solo para referencias)
-from sqlalchemy import Column, String, Integer, Boolean, Text, ForeignKey, DateTime, Float, func
+from sqlalchemy import Column, String, Integer, DateTime, Text, Float, ForeignKey, func
 from sqlalchemy.orm import relationship
 
 class Ciudad(Base):
     __tablename__ = "ciudad"
-    __table_args__ = {"schema": "empresa_master", "extend_existing": True}
+    __table_args__ = {"schema": "public", "extend_existing": True}
 
     id = Column(Integer, primary_key=True)
     nombre = Column(String(300), nullable=False)
@@ -86,7 +86,7 @@ class Ciudad(Base):
     updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
     
     # Relationships
-    empresas = relationship('Company', back_populates='ciudad')
+    empresas = relationship('Company', back_populates='ciudad', primaryjoin='public.ciudad.c.id == empresa_master.companies.c.ciudad_id')
 
 class CiiuEntity(Base):
     __tablename__ = "ciiu"
@@ -162,7 +162,7 @@ class Company(Base):
     size_company = Column(String(255), nullable=True)
     
     # Relationships
-    ciudad_id = Column(Integer, ForeignKey('empresa_master.ciudad.id', ondelete='SET NULL'), nullable=True)
+    ciudad_id = Column(Integer, ForeignKey('public.ciudad.id', ondelete='SET NULL'), nullable=True)
     ciudad = relationship('Ciudad', back_populates='empresas')
     
     actividad_economica_id = Column(String(36), ForeignKey('empresa_master.ciiu.id'), nullable=True)

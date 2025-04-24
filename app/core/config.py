@@ -1,6 +1,7 @@
 from pydantic import Field, validator
 from pydantic_settings import BaseSettings
 from typing import Optional
+from urllib.parse import quote_plus
 
 
 class Settings(BaseSettings):
@@ -28,7 +29,8 @@ class Settings(BaseSettings):
     def assemble_db_connection(cls, v, values) -> str:
         if v:
             return v
-        return f"postgresql://{values.get('POSTGRES_USER')}:{values.get('POSTGRES_PASSWORD')}@{values.get('POSTGRES_SERVER')}:{values.get('POSTGRES_PORT')}/{values.get('POSTGRES_DB')}"
+        password = quote_plus(values.get('POSTGRES_PASSWORD'))
+        return f"postgresql://{values.get('POSTGRES_USER')}:{password}@{values.get('POSTGRES_SERVER')}:{values.get('POSTGRES_PORT')}/{values.get('POSTGRES_DB')}"
     
     class Config:
         env_prefix = ""

@@ -1,12 +1,34 @@
 from itertools import combinations
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Tuple
+import logging
+import concurrent.futures
+import multiprocessing
 
 from sqlalchemy.orm import Session
 from app.models.schemas import Empresa, MatchResult, MatchConfig
 from app.models.sector_matrix import SectorMatrixService
+from app.db.database import get_db
+
+logger = logging.getLogger(__name__)
 
 
 class MatchingService:
+    @staticmethod
+    def process_batch(batch_data: Tuple[List[Tuple[Empresa, Empresa]], str, Optional[MatchConfig]]) -> List[MatchResult]:
+        """Procesa un lote de combinaciones de empresas en un proceso separado."""
+        batch, ecosystem_id, config = batch_data
+        db = next(get_db())
+        try:
+            batch_matches = []
+            for emp1, emp2 in batch:
+                match_info = MatchingService.calcular_match_mase(
+                    emp1, emp2, ecosystem_id, db, config
+                )
+                batch_matches.append(match_info)
+            return batch_matches
+        finally:
+            db.close()
+
     @staticmethod
     def calcular_match_mase(
         emp1: Empresa, 
@@ -160,6 +182,7 @@ class MatchingService:
         ecosystem_id: str,
         db: Session,
         config: Optional[MatchConfig] = None,
+        batch_size: int = 100
     ) -> List[MatchResult]:
         """
         Genera todos los posibles emparejamientos entre las empresas proporcionadas.
@@ -168,6 +191,7 @@ class MatchingService:
             empresas: Lista de empresas a emparejar
             ecosystem_id: ID del ecosistema
             config: Configuración de pesos para cada factor
+            batch_size: Número de combinaciones a procesar por lote
             
         Returns:
             Lista de resultados de match ordenados por puntaje total
@@ -176,14 +200,35 @@ class MatchingService:
             config = MatchConfig()
             
         matches = []
-        for emp1, emp2 in combinations(empresas, 2):
-            match_info = MatchingService.calcular_match_mase(
-                emp1, emp2, ecosystem_id, db, config
-            )
+        # Generar todas las combinaciones
+        all_combinations = list(combinations(empresas, 2))
+        total_combinations = len(all_combinations)
+        logger.info(f"Generando matches para {len(empresas)} empresas. Total de combinaciones: {total_combinations}")
+        
+        # Dividir las combinaciones en lotes para procesamiento paralelo
+        batches = []
+        for i in range(0, total_combinations, batch_size):
+            batch = all_combinations[i:i + batch_size]
+            batches.append((batch, ecosystem_id, config))
+        
+        # Usar ProcessPoolExecutor para procesamiento paralelo
+        max_workers = min(multiprocessing.cpu_count(), len(batches))  # No usar más workers que lotes
+        logger.info(f"Iniciando procesamiento paralelo con {max_workers} workers")
+        
+        with concurrent.futures.ProcessPoolExecutor(max_workers=max_workers) as executor:
+            future_to_batch = {executor.submit(MatchingService.process_batch, batch_data): i 
+                             for i, batch_data in enumerate(batches)}
             
-            matches.append(match_info)
-            
-        # Ordenar por puntaje total
-        matches.sort(key=lambda x: x.puntaje_total, reverse=True)
+            completed_batches = 0
+            for future in concurrent.futures.as_completed(future_to_batch):
+                batch_index = future_to_batch[future]
+                try:
+                    batch_matches = future.result()
+                    batch_matches.sort(key=lambda x: x.puntaje_total, reverse=True)
+                    matches.extend(batch_matches)
+                    completed_batches += 1
+                    logger.info(f"Lote {completed_batches} de {len(batches)} completado. Matches acumulados: {len(matches)}")
+                except Exception as e:
+                    logger.error(f"Error procesando lote {batch_index}: {str(e)}")
         
         return matches

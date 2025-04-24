@@ -39,6 +39,8 @@ async def generate_ecosystem_matches(
         Mensaje de confirmación con el número de matches generados
     """
     try:
+        logger.info(f"Iniciando generación de matches para el ecosistema {ecosystem_id}")
+        
         # Obtener todas las empresas del ecosistema desde la base de datos principal
         # Incluir las relaciones necesarias (ciudad y ciiu)
         companies = db.query(Company).options(
@@ -50,6 +52,8 @@ async def generate_ecosystem_matches(
         ).filter(
             EcosystemCompany.ecosistema_id == ecosystem_id
         ).all()
+        
+        logger.info(f"Se encontraron {len(companies)} empresas en el ecosistema")
 
         if not companies:
             raise HTTPException(status_code=404, detail=f"No hay empresas en el ecosistema {ecosystem_id}")
@@ -89,7 +93,9 @@ async def generate_ecosystem_matches(
             empresas.append(empresa)
         
         # Crear un nuevo registro de ejecución
+        logger.info("Creando registro de ejecución de matches")
         match_execution = MatchExecutionService.create_match_execution(ecosystem_id, description, db)
+        logger.info(f"Registro de ejecución creado con ID: {match_execution.id}")
         
         # Generar matches
         matching_service = MatchingService()
@@ -97,14 +103,19 @@ async def generate_ecosystem_matches(
             empresas=empresas,
             ecosystem_id=ecosystem_id,
             db=db,
+            batch_size=200  # Tamaño de lote optimizado para procesamiento paralelo
         )
         
         # Almacenar los matches asociados a esta ejecución
+        logger.info(f"Iniciando almacenamiento de {len(match_results)} matches generados")
         stored_matches = 0
         for match_result in match_results:
             MatchExecutionService.store_match(match_result, match_execution.id, ecosystem_id, db)
             stored_matches += 1
+            if stored_matches % 10 == 0:  # Log cada 10 matches
+                logger.info(f"Almacenados {stored_matches} de {len(match_results)} matches")
         
+        logger.info(f"Proceso completado. Total de matches almacenados: {stored_matches}")
         return {
             "message": f"Se generaron {stored_matches} matches para el ecosistema {ecosystem_id}",
             "execution_id": match_execution.id,
