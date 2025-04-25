@@ -86,7 +86,7 @@ class MatchingService:
         codigo2 = str(emp2_dict["codigo_ciiu"])
         
         # Usar el servicio de matriz sectorial para obtener la compatibilidad
-        match_sector = SectorMatrixService.get_compatibility(codigo1, codigo2, db)
+        match_sector = SectorMatrixService.get_compatibility(codigo1, codigo2)
             
         # Aplicar pesos a cada factor
         match_total = (

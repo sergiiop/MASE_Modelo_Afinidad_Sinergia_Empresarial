@@ -1,7 +1,11 @@
-from pydantic import Field, validator
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings
 from typing import Optional
 from urllib.parse import quote_plus
+import sys
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class Settings(BaseSettings):
@@ -17,20 +21,28 @@ class Settings(BaseSettings):
     LOG_LEVEL: str = Field(default="INFO", env="LOG_LEVEL")
     DEFAULT_LIMIT: int = Field(default=100, env="DEFAULT_LIMIT")
     
-    # PostgreSQL - Conexión a la base de datos principal
-    POSTGRES_SERVER: str = Field(default="localhost", env="POSTGRES_SERVER")
-    POSTGRES_PORT: str = Field(default="5432", env="POSTGRES_PORT")
-    POSTGRES_USER: str = Field(default="postgres", env="POSTGRES_USER")
-    POSTGRES_PASSWORD: str = Field(default="mysecret", env="POSTGRES_PASSWORD")
-    POSTGRES_DB: str = Field(default="tornado-se-dev", env="POSTGRES_DB")
+    # PostgreSQL - Conexión a la base de datos principal (requeridas)
+    POSTGRES_SERVER: str = Field(..., env="POSTGRES_SERVER")
+    POSTGRES_PORT: str = Field(..., env="POSTGRES_PORT")
+    POSTGRES_USER: str = Field(..., env="POSTGRES_USER")
+    POSTGRES_PASSWORD: str = Field(..., env="POSTGRES_PASSWORD")
+    POSTGRES_DB: str = Field(..., env="POSTGRES_DB")
     DATABASE_URL: Optional[str] = None
     
-    @validator("DATABASE_URL", pre=True)
-    def assemble_db_connection(cls, v, values) -> str:
+    @field_validator("POSTGRES_SERVER", "POSTGRES_PORT", "POSTGRES_USER", "POSTGRES_PASSWORD", "POSTGRES_DB", mode="before")
+    def validate_postgres_vars(cls, v, info):
+        if not v:
+            error_msg = f"La variable de entorno {info.field_name} es requerida para la conexión a PostgreSQL"
+            logger.error(error_msg)
+            sys.exit(1)
+        return v
+    
+    @field_validator("DATABASE_URL", mode="before")
+    def assemble_db_connection(cls, v, info) -> str:
         if v:
             return v
-        password = quote_plus(values.get('POSTGRES_PASSWORD'))
-        return f"postgresql://{values.get('POSTGRES_USER')}:{password}@{values.get('POSTGRES_SERVER')}:{values.get('POSTGRES_PORT')}/{values.get('POSTGRES_DB')}"
+        password = quote_plus(str(info.data.get('POSTGRES_PASSWORD')))
+        return f"postgresql://{info.data.get('POSTGRES_USER')}:{password}@{info.data.get('POSTGRES_SERVER')}:{info.data.get('POSTGRES_PORT')}/{info.data.get('POSTGRES_DB')}"
     
     class Config:
         env_prefix = ""

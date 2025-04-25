@@ -1,0 +1,54 @@
+version: '3.8'
+
+services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.prod
+    container_name: mase-api-prod
+    volumes:
+      - ./data:/app/data
+      - ./matriz.xlsx:/app/matriz.xlsx:ro
+    ports:
+      - "${PORT}:8000"
+    environment:
+      # Configuración general
+      - ENVIRONMENT=production
+      - DEBUG=false
+      - HOST=0.0.0.0
+      - PORT=${PORT}
+      - DATA_DIR=/app/data
+      - LOG_LEVEL=INFO
+      - DEFAULT_LIMIT=100
+      - WORKERS=4
+      
+      # PostgreSQL (requeridas desde .env)
+      - POSTGRES_SERVER=${POSTGRES_SERVER}
+      - POSTGRES_PORT=${POSTGRES_PORT}
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=${POSTGRES_DB}
+    
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h $${POSTGRES_SERVER} -p $${POSTGRES_PORT} -U $${POSTGRES_USER} || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    
+    restart: unless-stopped
+    
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 2G
+        reservations:
+          cpus: '1'
+          memory: 1G
+      
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+        window: 120s

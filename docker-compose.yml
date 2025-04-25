@@ -1,64 +1,30 @@
 version: '3.8'
 
 services:
-  # Servicio para desarrollo
-  mase-dev:
+  api:
     build:
       context: .
-      dockerfile: Dockerfile.dev
-    container_name: mase-dev
-    volumes:
-      - .:/app
-      - ./data:/app/data
-    ports:
-      - "8000:8000"
-    environment:
-      - MASE_ENVIRONMENT=development
-      - MASE_DEBUG=true
-      - MASE_PORT=8000
-      - MASE_HOST=0.0.0.0
-      - MASE_DB_PATH=/app/data/sector_matrix.db
-      - MASE_DATA_DIR=/app/data
-      - MASE_LOG_LEVEL=DEBUG
-      # PostgreSQL
-      - MASE_POSTGRES_SERVER=postgres
-      - MASE_POSTGRES_PORT=5432
-      - MASE_POSTGRES_USER=postgres
-      - MASE_POSTGRES_PASSWORD=postgres_password
-      - MASE_POSTGRES_DB=mase
-      - MASE_DEFAULT_LIMIT=100
-    restart: unless-stopped
-
-  # Servicio para producción
-  mase-prod:
-    build:
-      context: .
-      dockerfile: Dockerfile.prod
-    container_name: mase-prod
+      dockerfile: Dockerfile
+    container_name: mase-api
     volumes:
       - ./data:/app/data
+      - ./matriz.xlsx:/app/matriz.xlsx:ro
     ports:
-      - "8001:8000"
-    depends_on:
-      - postgres
+      - "8001:8001"
     environment:
-      - MASE_ENVIRONMENT=production
-      - MASE_DEBUG=false
-      - MASE_PORT=8000
-      - MASE_HOST=0.0.0.0
-      - MASE_DB_PATH=/app/data/sector_matrix.db
-      - MASE_DATA_DIR=/app/data
-      - MASE_LOG_LEVEL=INFO
-      - MASE_WORKERS=4
-      - MASE_CORS_ORIGINS=*
-      # PostgreSQL
-      - MASE_POSTGRES_SERVER=postgres
-      - MASE_POSTGRES_PORT=5432
-      - MASE_POSTGRES_USER=postgres
-      - MASE_POSTGRES_PASSWORD=postgres_password
-      - MASE_POSTGRES_DB=mase
-      - MASE_DEFAULT_LIMIT=50
+      # Configuración general
+      - ENVIRONMENT=production
+      - DEBUG=false
+      - HOST=0.0.0.0
+      - PORT=8001
+      - DATA_DIR=/app/data
+      - LOG_LEVEL=INFO
+      - DEFAULT_LIMIT=100
+      
+      # PostgreSQL - Requeridas desde .env
+      - POSTGRES_SERVER=${POSTGRES_SERVER}
+      - POSTGRES_PORT=${POSTGRES_PORT}
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=${POSTGRES_DB}
     restart: unless-stopped
-
-volumes:
-  postgres_data:

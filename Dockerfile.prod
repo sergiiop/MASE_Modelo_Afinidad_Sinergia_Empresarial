@@ -1,67 +1,61 @@
-FROM python:3.9-slim as builder
+# Etapa de construcción
+FROM python:3.12-slim as builder
 
 WORKDIR /app
 
-# Configurar variables de entorno para la etapa de construcción
+# Variables esenciales para build
 ENV PYTHONUNBUFFERED=1 \
-    PYTHONDONTWRITEBYTECODE=1
+    PYTHONDONTWRITEBYTECODE=1 \
+    PATH="/opt/venv/bin:$PATH"
 
-# Instalar dependencias de sistema
+# Instalar dependencias de sistema necesarias para build
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     postgresql-client \
+    libpq-dev \
+    python3-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# Copiar archivos de requisitos
-COPY requirements.txt .
-
-# Instalar dependencias en un entorno virtual
+# Crear y activar entorno virtual
 RUN python -m venv /opt/venv
-ENV PATH="/opt/venv/bin:$PATH"
-RUN pip install --no-cache-dir -r requirements.txt && \
-    # Asegurarse de que pydantic-settings esté instalado
-    pip install --no-cache-dir pydantic-settings
 
-# Segunda etapa para una imagen más ligera
-FROM python:3.9-slim
+# Instalar dependencias
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Etapa de producción
+FROM python:3.12-slim
 
 WORKDIR /app
 
-# Copiar el entorno virtual desde la etapa anterior
+# Copiar solo el entorno virtual
 COPY --from=builder /opt/venv /opt/venv
 
-# Configurar variables de entorno por defecto
+# Variables esenciales para runtime
 ENV PATH="/opt/venv/bin:$PATH" \
     PYTHONUNBUFFERED=1 \
-    PYTHONDONTWRITEBYTECODE=1 \
-    MASE_ENVIRONMENT=production \
-    MASE_DEBUG=false \
-    MASE_PORT=8000 \
-    MASE_HOST=0.0.0.0 \
-    MASE_DB_PATH=/app/data/sector_matrix.db \
-    MASE_DATA_DIR=/app/data \
-    MASE_LOG_LEVEL=INFO \
-    MASE_WORKERS=4 \
-    MASE_CORS_ORIGINS="*"
+    PYTHONDONTWRITEBYTECODE=1
 
-# Copiar el código fuente
+# Instalar cliente PostgreSQL para healthchecks
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    postgresql-client \
+    libpq5 \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copiar código y crear estructura
 COPY . .
-
-# Crear directorio para datos
 RUN mkdir -p /app/data
 
-# Exponer el puerto
-EXPOSE 8000
-
-# Ejecutar como usuario no root
-RUN useradd -m appuser
+# Configurar usuario no root
+RUN useradd -m appuser && \
+    chown -R appuser:appuser /app
 USER appuser
 
-# Copiar y hacer ejecutable el script de inicio
-COPY start.sh /app/start.sh
-RUN chmod +x /app/start.sh && \
-    # Asegurarse de que el script tenga formato UNIX (LF en lugar de CRLF)
-    sed -i 's/\r$//' /app/start.sh
+# Puerto por defecto (puede ser sobreescrito en runtime)
+EXPOSE 8000
 
 # Comando para ejecutar la aplicación
-CMD ["bash", "/app/start.sh"]
+CMD ["uvicorn", "app.main:app", \
+     "--host", "0.0.0.0", \
+     "--port", "8000", \
+     "--workers", "4"]
