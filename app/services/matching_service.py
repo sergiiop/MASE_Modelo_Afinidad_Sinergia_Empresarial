@@ -14,27 +14,24 @@ logger = logging.getLogger(__name__)
 
 class MatchingService:
     @staticmethod
-    def process_batch(batch_data: Tuple[List[Tuple[Empresa, Empresa]], str, Optional[MatchConfig]]) -> List[MatchResult]:
+    def process_batch(batch_data: Tuple[List[Tuple[Empresa, Empresa]], Optional[MatchConfig]]) -> List[MatchResult]:
         """Procesa un lote de combinaciones de empresas en un proceso separado."""
-        batch, ecosystem_id, config = batch_data
-        db = next(get_db())
+        batch, config = batch_data
         try:
             batch_matches = []
             for emp1, emp2 in batch:
                 match_info = MatchingService.calcular_match_mase(
-                    emp1, emp2, ecosystem_id, db, config
+                    emp1, emp2, config
                 )
                 batch_matches.append(match_info)
             return batch_matches
         finally:
-            db.close()
+            pass
 
     @staticmethod
     def calcular_match_mase(
         emp1: Empresa, 
         emp2: Empresa, 
-        ecosystem_id: str,
-        db: Session,
         config: Optional[MatchConfig] = None
     ) -> MatchResult:
         """
@@ -43,7 +40,6 @@ class MatchingService:
         Args:
             emp1: Primera empresa
             emp2: Segunda empresa
-            ecosystem_id: ID del ecosistema
             config: Configuración de pesos para cada factor
             
         Returns:
@@ -179,8 +175,6 @@ class MatchingService:
     @staticmethod
     def generar_matching_mase(
         empresas: List[Empresa], 
-        ecosystem_id: str,
-        db: Session,
         config: Optional[MatchConfig] = None,
         batch_size: int = 100
     ) -> List[MatchResult]:
@@ -189,7 +183,6 @@ class MatchingService:
         
         Args:
             empresas: Lista de empresas a emparejar
-            ecosystem_id: ID del ecosistema
             config: Configuración de pesos para cada factor
             batch_size: Número de combinaciones a procesar por lote
             
@@ -209,7 +202,7 @@ class MatchingService:
         batches = []
         for i in range(0, total_combinations, batch_size):
             batch = all_combinations[i:i + batch_size]
-            batches.append((batch, ecosystem_id, config))
+            batches.append((batch, config))
         
         # Usar ProcessPoolExecutor para procesamiento paralelo
         max_workers = min(multiprocessing.cpu_count(), len(batches))  # No usar más workers que lotes

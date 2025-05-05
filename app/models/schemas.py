@@ -30,7 +30,6 @@ class Empresa(BaseModel):
     infraestructura_fisica: int = Field(ge=0, le=1)
     compra_maquinaria_equipos: int = Field(ge=0, le=1)
 
-
 class EmpresasInput(BaseModel):
     empresas: List[Empresa]
     matriz_sector: Optional[Dict[str, Dict[str, float]]] = None

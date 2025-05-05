@@ -100,6 +100,16 @@ class CiiuEntity(Base):
     # Relationships
     empresas = relationship('Company', back_populates='ciiu')
 
+class CompanySize(Base):
+    __tablename__ = "company_size"
+    __table_args__ = {"schema": "empresa_master"}
+
+    id = Column(Integer, primary_key=True)
+    descripcion = Column(String(500), nullable=False)
+    codigo = Column(String(250), unique=True, nullable=True)
+    created_at = Column(DateTime, default=func.now())
+    updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
+
 class Ecosistema(Base):
     """Modelo para ecosistemas de empresas."""
     __tablename__ = "ecosistema"
@@ -125,6 +135,7 @@ class EcosystemCompany(Base):
     ecosistema_id = Column(String(36), ForeignKey('empresa_master.ecosistema.id'), nullable=False)
     empresa_id = Column(String(36), ForeignKey('empresa_master.companies.id'), nullable=False)
     is_active = Column(Boolean, nullable=False, default=True)
+    additional_data = Column(JSON, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
@@ -143,23 +154,9 @@ class Company(Base):
     num_empleados_directos = Column(Integer, nullable=True, default=0)
     num_empleados_indirectos = Column(Integer, nullable=True, default=0)
     
-    # Campos de estrategia
-    crear_nuevos_modelos_negocio = Column(Boolean, nullable=True, default=False)
-    generar_eficiencias = Column(Boolean, nullable=True, default=False)
-    fidelizar_mercado_actual = Column(Boolean, nullable=True, default=False)
-    diversificar_mercado = Column(Boolean, nullable=True, default=False)
-    incremento_ventas = Column(Boolean, nullable=True, default=False)
-    llegar_nuevos_mercados = Column(Boolean, nullable=True, default=False)
-    lanzamiento_nuevos_productos = Column(Boolean, nullable=True, default=False)
-    mejoramiento_productividad = Column(Boolean, nullable=True, default=False)
-    incremento_capacidad_productiva = Column(Boolean, nullable=True, default=False)
-    desarrollo_nuevos_canales = Column(Boolean, nullable=True, default=False)
-    implementacion_ti = Column(Boolean, nullable=True, default=False)
-    infraestructura_fisica = Column(Boolean, nullable=True, default=False)
-    compra_maquinaria_equipos = Column(Boolean, nullable=True, default=False)
-    
     # Campos adicionales
-    size_company = Column(String(255), nullable=True)
+    company_size_id = Column(Integer, ForeignKey('empresa_master.company_size.id'), nullable=True) 
+    company_size = relationship('CompanySize', back_populates='empresas')
     
     # Relationships
     ciudad_id = Column(Integer, ForeignKey('public.ciudad.id', ondelete='SET NULL'), nullable=True)
@@ -183,3 +180,30 @@ class SectorMatrix(Base):
     valor = Column(Float, nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+# Characterization
+
+class ConfigureCharacterization(Base):
+    __tablename__ = "configure_characterization"
+    __table_args__ = {"schema": "empresa_master"}
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+
+    ecosystem_id = Column(String(36), ForeignKey('empresa_master.ecosistema.id'), nullable=False)
+    title = Column(String(255), nullable=False)
+    isDefault = Column(Boolean, nullable=False, default=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+    
+class SubCharacterization(Base):
+    __tablename__ = "sub_characterization"
+    __table_args__ = {"schema": "empresa_master"}
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    configure_characterization_id = Column(String(36), ForeignKey('empresa_master.configure_characterization.id'), nullable=False)
+    title = Column(String(255), nullable=False)
+    status = Column(Boolean, nullable=False, default=True)
+    order = Column(Integer, nullable=False)
+    icon = Column(String(255), nullable=False)
+    key = Column(String(255), nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+    

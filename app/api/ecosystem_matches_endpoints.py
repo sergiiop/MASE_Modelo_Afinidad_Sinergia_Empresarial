@@ -1,13 +1,15 @@
-from fastapi import APIRouter, Depends, Query, HTTPException, Path
+from fastapi import APIRouter, Depends, Query, HTTPException, Path, Body
 from sqlalchemy.orm import Session, joinedload
 import logging
 from typing import List, Dict, Any, Optional
+from pydantic import BaseModel
 
 from app.db.database import get_db
 from app.models.schemas import MatchResponse, MatchResult, Empresa
 from app.services.matching_service import MatchingService
 from app.services.match_storage_service import MatchStorageService
 from app.services.match_execution_service import MatchExecutionService
+from app.services.characterization_service import CharacterizationService
 from app.db.models import Company, Match, EcosystemCompany
 
 router = APIRouter()
@@ -22,42 +24,50 @@ def clean_ciiu_code(code: str) -> str:
         return code[1:]
     return code
 
+
+class CompanyMatchRequest(BaseModel):
+    """Modelo para la solicitud de generación de matches."""
+    company_ids: List[str]
+    description: Optional[str] = None
+
 @router.post("/ecosystems/{ecosystem_id}/generate-matches", response_model=Dict[str, Any])
 async def generate_ecosystem_matches(
     ecosystem_id: str,
-    description: Optional[str] = None,
+    request: CompanyMatchRequest = Body(...),
     db: Session = Depends(get_db)
 ):
     """
-    Genera matches para todas las empresas en un ecosistema y los asocia a una ejecución.
+    Genera matches para las empresas especificadas en un ecosistema y los asocia a una ejecución.
     
     Args:
         ecosystem_id: ID del ecosistema
-        description: Descripción opcional para esta ejecución
+        request: Objeto con los IDs de las empresas y una descripción opcional
         
     Returns:
         Mensaje de confirmación con el número de matches generados
     """
     try:
-        logger.info(f"Iniciando generación de matches para el ecosistema {ecosystem_id}")
+        logger.info(f"Iniciando generación de matches para el ecosistema {ecosystem_id} con {len(request.company_ids)} empresas seleccionadas")
         
-        # Obtener todas las empresas del ecosistema desde la base de datos principal
+        # Obtener solo las empresas especificadas en el request que pertenecen al ecosistema
         # Incluir las relaciones necesarias (ciudad y ciiu)
         companies = db.query(Company).options(
             joinedload(Company.ciudad),
-            joinedload(Company.ciiu)
+            joinedload(Company.ciiu),
+            joinedload(Company.company_size)
         ).join(
             EcosystemCompany, 
             EcosystemCompany.empresa_id == Company.id
         ).filter(
-            EcosystemCompany.ecosistema_id == ecosystem_id
+            EcosystemCompany.ecosistema_id == ecosystem_id,
+            Company.id.in_(request.company_ids)
         ).all()
         
         logger.info(f"Se encontraron {len(companies)} empresas en el ecosistema")
 
         if not companies:
             raise HTTPException(status_code=404, detail=f"No hay empresas en el ecosistema {ecosystem_id}")
-        
+            
         # Convertir las empresas al formato esperado por el servicio de matching
         empresas = []
         for company in companies:
@@ -65,6 +75,43 @@ async def generate_ecosystem_matches(
             ciudad_nombre = company.ciudad.nombre if company.ciudad else None
             codigo_ciiu = clean_ciiu_code(company.ciiu.codigo) if company.ciiu else None
             descripcion_ciiu = company.ciiu.descripcion if company.ciiu else None
+            size = company.company_size.descripcion if company.company_size else None
+            
+            # Obtener datos estratégicos de la relación EcosystemCompany
+            ecosystem_company = db.query(EcosystemCompany).filter(
+                EcosystemCompany.ecosistema_id == ecosystem_id,
+                EcosystemCompany.empresa_id == company.id
+            ).first()
+            
+            additional_data = ecosystem_company.additional_data if ecosystem_company and ecosystem_company.additional_data else {}
+            
+            strategic_objectives = CharacterizationService.get_strategic_objectives(
+                ecosystem_id=ecosystem_id,
+                db=db
+            )
+
+            interests = CharacterizationService.get_interests(
+                ecosystem_id=ecosystem_id,
+                db=db
+            )
+            
+            # Si hay datos adicionales y objetivos estratégicos, actualizar los valores
+            if additional_data and 'intereses' in additional_data:
+                char_data = additional_data.get('intereses', {})
+                
+                for obj in interests:
+                    obj_key = obj.get('key')
+                    if obj_key in char_data:
+                        # Convertir a 1 si está marcado como verdadero
+                        interests_values[obj_key] = 1 if char_data.get(obj_key) else 0
+
+            if additional_data and 'objetivos_estrategicos' in additional_data:
+                char_data = additional_data.get('objetivos_estrategicos', {})
+                for obj in strategic_objectives:
+                    obj_key = obj.get('key')
+                    if obj_key in char_data:
+                        # Convertir a 1 si está marcado como verdadero
+                        strategic_values[obj_key] = 1 if char_data.get(obj_key) else 0
             
             empresa = Empresa(
                 nit=company.nit,
@@ -73,36 +120,23 @@ async def generate_ecosystem_matches(
                 codigo_ciiu=codigo_ciiu,
                 descripcion_ciiu=descripcion_ciiu,
                 ciudad=ciudad_nombre,
-                tamaño=company.size_company,
+                size=size,
                 num_empleados_directos=company.num_empleados_directos,
                 num_empleados_indirectos=company.num_empleados_indirectos,
-                crear_nuevos_modelos_negocio=company.crear_nuevos_modelos_negocio,
-                generar_eficiencias=company.generar_eficiencias,
-                fidelizar_mercado_actual=company.fidelizar_mercado_actual,
-                diversificar_mercado=company.diversificar_mercado,
-                incremento_ventas=company.incremento_ventas,
-                llegar_nuevos_mercados=company.llegar_nuevos_mercados,
-                lanzamiento_nuevos_productos=company.lanzamiento_nuevos_productos,
-                mejoramiento_productividad=company.mejoramiento_productividad,
-                incremento_capacidad_productiva=company.incremento_capacidad_productiva,
-                desarrollo_nuevos_canales=company.desarrollo_nuevos_canales,
-                implementacion_ti=company.implementacion_ti,
-                infraestructura_fisica=company.infraestructura_fisica,
-                compra_maquinaria_equipos=company.compra_maquinaria_equipos
+                **strategic_values,
+                **interests_values
             )
             empresas.append(empresa)
         
         # Crear un nuevo registro de ejecución
         logger.info("Creando registro de ejecución de matches")
-        match_execution = MatchExecutionService.create_match_execution(ecosystem_id, description, db)
+        match_execution = MatchExecutionService.create_match_execution(ecosystem_id, request.description, db)
         logger.info(f"Registro de ejecución creado con ID: {match_execution.id}")
         
         # Generar matches
         matching_service = MatchingService()
         match_results = matching_service.generar_matching_mase(
             empresas=empresas,
-            ecosystem_id=ecosystem_id,
-            db=db,
             batch_size=200  # Tamaño de lote optimizado para procesamiento paralelo
         )
         
